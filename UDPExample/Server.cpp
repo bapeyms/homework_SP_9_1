@@ -13,19 +13,35 @@ using namespace std;
 SOCKET server_socket;
 
 vector<string> history;
+vector<string> nicknames(MAX_CLIENTS);
 
-int main() {
+bool NicknameCheck(const string& n)
+{
+	for (int i = 0; i < MAX_CLIENTS; i++)
+	{
+		if (nicknames[i] == n)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+int main() 
+{
 	system("title Server");
 
-	puts("Start server... DONE.");
+	puts("Start server... DONE");
 	WSADATA wsa;
-	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) {
+	if (WSAStartup(MAKEWORD(2, 2), &wsa) != 0) 
+	{
 		printf("Failed. Error Code: %d", WSAGetLastError());
 		return 1;
 	}
 
 	// create a socket
-	if ((server_socket = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET) {
+	if ((server_socket = socket(AF_INET, SOCK_STREAM, 0)) == INVALID_SOCKET) 
+	{
 		printf("Could not create socket: %d", WSAGetLastError());
 		return 2;
 	}
@@ -38,7 +54,8 @@ int main() {
 	server.sin_port = htons(8888);
 
 	// bind socket
-	if (bind(server_socket, (sockaddr*)&server, sizeof(server)) == SOCKET_ERROR) {
+	if (bind(server_socket, (sockaddr*)&server, sizeof(server)) == SOCKET_ERROR) 
+	{
 		printf("Bind failed with error code: %d", WSAGetLastError());
 		return 3;
 	}
@@ -56,8 +73,9 @@ int main() {
 	// fd means "file descriptors"
 	fd_set readfds; // https://docs.microsoft.com/en-us/windows/win32/api/winsock/ns-winsock-fd_set
 	SOCKET client_socket[MAX_CLIENTS] = {};
-
-	while (true) {
+	
+	while (true) 
+	{
 		// очистить сокет fdset
 		FD_ZERO(&readfds);
 
@@ -68,13 +86,15 @@ int main() {
 		for (int i = 0; i < MAX_CLIENTS; i++) 
 		{
 			SOCKET s = client_socket[i];
-			if (s > 0) {
+			if (s > 0) 
+			{
 				FD_SET(s, &readfds);
 			}
 		}
 
 		// дождитесь активности на любом из сокетов, тайм-аут равен NULL, поэтому ждите бесконечно
-		if (select(0, &readfds, NULL, NULL, NULL) == SOCKET_ERROR) {
+		if (select(0, &readfds, NULL, NULL, NULL) == SOCKET_ERROR) 
+		{
 			printf("select function call failed with error code : %d", WSAGetLastError());
 			return 4;
 		}
@@ -83,8 +103,10 @@ int main() {
 		SOCKET new_socket; // новый клиентский сокет
 		sockaddr_in address;
 		int addrlen = sizeof(sockaddr_in);
-		if (FD_ISSET(server_socket, &readfds)) {
-			if ((new_socket = accept(server_socket, (sockaddr*)&address, &addrlen)) < 0) {
+		if (FD_ISSET(server_socket, &readfds)) 
+		{
+			if ((new_socket = accept(server_socket, (sockaddr*)&address, &addrlen)) < 0) 
+			{
 				perror("accept function error");
 				return 5;
 			}
@@ -96,12 +118,44 @@ int main() {
 			}
 
 			// информировать серверную сторону о номере сокета - используетс€ в командах отправки и получени€
-			printf("New connection, socket fd is %d, ip is: %s, port: %d\n", new_socket, inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+			printf("New connection, socket fd is %d, ip is: %s, port: %d\n", 
+				new_socket, inet_ntoa(address.sin_addr), ntohs(address.sin_port));
+
+			char name[DEFAULT_BUFLEN];
+			string nickname;
+			while (true)
+			{
+				char ask_name[] = "Welcome! Please, enter your nickname: ";	
+				send(new_socket, ask_name, strlen(ask_name), 0);
+				int name_length = recv(new_socket, name, DEFAULT_BUFLEN, 0);
+				if (name_length <= 0)
+				{
+					cout << "Empty nickname. Client is off" << endl;
+					closesocket(new_socket);
+					break;
+				}
+				name[name_length] = '\0';
+				nickname = name;
+				if (NicknameCheck(nickname))
+				{
+					char nickname_check_result[] = "Nickname already exists. Try another one\n";
+					send(new_socket, nickname_check_result, strlen(nickname_check_result), 0);
+				}
+				else
+				{
+					char nickname_check_ok[] = "Welcome to chat!\n\n- Commands -\n/users - show online users\n/nick - change nickname\n/quit - leave chat\n";
+					send(new_socket, nickname_check_ok, strlen(nickname_check_ok), 0);
+					break;
+				}
+			}
 
 			// добавить новый сокет в массив сокетов
-			for (int i = 0; i < MAX_CLIENTS; i++) {
-				if (client_socket[i] == 0) {
+			for (int i = 0; i < MAX_CLIENTS; i++) 
+			{
+				if (client_socket[i] == 0) 
+				{
 					client_socket[i] = new_socket;
+					nicknames[i] = nickname;
 					printf("Adding to list of sockets at index %d\n", i);
 					break;
 				}
@@ -126,35 +180,90 @@ int main() {
 				int client_message_length = recv(s, client_message, DEFAULT_BUFLEN, 0);
 				client_message[client_message_length] = '\0';
 
+				// quit command
 				string check_exit = client_message;
-				if (check_exit == "off")
+				if (check_exit == "/quit")
 				{
-					cout << "Client #" << i << " is off\n";
+					cout << nicknames[i] << " quit\n";
+					string left_msg = nicknames[i] + " left the chat";
+					for (int j = 0; j < MAX_CLIENTS; j++)
+					{
+						if (client_socket[j] != 0 && client_socket[j] != s)
+						{
+							send(client_socket[j], left_msg.c_str(), left_msg.size(), 0);
+						}
+					}
 					closesocket(s);
 					client_socket[i] = 0;
+					nicknames[i] = "";
 					continue;
 				}
-				history.push_back(client_message);
-				
 
+				// users command
+				string check_online = client_message;
+				if (check_online == "/users")
+				{
+					string user_list = "Online users:\n";
+					for (int j = 0; j < MAX_CLIENTS; j++)
+					{
+						if (client_socket[j] != 0)
+						{
+							user_list += "- " + nicknames[j] + "\n";
+						}
+					}
+					send(s, user_list.c_str(), user_list.size(), 0);
+					continue;
+				}
+
+				// nick command
+				string nick_change(client_message);
+				if (nick_change.rfind("/nick", 0) == 0)
+				{
+					string new_nickname;
+					if (nick_change.size() > 6)
+					{
+						new_nickname = nick_change.substr(6);
+					}
+					if (new_nickname.empty())
+					{
+						string error = "ERROR! Correct example: /nick new_nickname\n";
+						send(s, error.c_str(), error.size(), 0);
+						continue;
+					}
+					if (NicknameCheck(new_nickname))
+					{
+						string error = "Nickname already exists. Try another one.\n";
+						send(s, error.c_str(), error.size(), 0);
+						continue;
+					}
+					string old_nick = nicknames[i];
+					nicknames[i] = new_nickname;
+					string notify = old_nick + " changed nickname to " + new_nickname + "\n";
+
+					for (int j = 0; j < MAX_CLIENTS; j++)
+					{
+						if (client_socket[j] != 0)
+						{
+							send(client_socket[j], notify.c_str(), notify.size(), 0);
+						}
+					}
+
+					string confirm = "Your nickname is now " + new_nickname + "\n";
+					send(s, confirm.c_str(), confirm.size(), 0);
+					cout << notify;
+					continue;
+				}
+
+				string full_message = "[" + nicknames[i] + "]: " + client_message;
+				history.push_back(full_message);
 				for (int j = 0; j < MAX_CLIENTS; j++)
 				{
 					if (client_socket[j] != 0 && client_socket[j] != s)
 					{
-						send(client_socket[j], client_message, client_message_length, 0);
+						send(client_socket[j], full_message.c_str(), full_message.size(), 0);
 					}
 				}
-
 			}
 		}
 	}
-
-	//WSACleanup();
 }
-
-/* «адание 1 
-—ервер выступает в роли посредника между подключенными клиентами.
-—охран€ет историю сообщении... массив клинтов и т.д.
-ѕри отправке текста, тот, кто отправил (клиент), не должен повторно получить свой же текст! 
-
-*/

@@ -1,4 +1,3 @@
-
 #define WIN32_LEAN_AND_MEAN
 #include <ws2tcpip.h>
 #include <windows.h>
@@ -32,7 +31,8 @@ void Sender()
 }
 void Receiver()
 {
-    while (true) {
+    while (true) 
+    {
         char response[DEFAULT_BUFLEN];
         int result = recv(client_socket, response, DEFAULT_BUFLEN, 0);
         response[result] = '\0';
@@ -50,7 +50,8 @@ int main()
     // initialize Winsock
     WSADATA wsaData;
     int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
-    if (iResult != 0) {
+    if (iResult != 0) 
+    {
         printf("WSAStartup failed with error: %d\n", iResult);
         return 1;
     }
@@ -62,7 +63,8 @@ int main()
     // разрешить адрес сервера и порт
     addrinfo* result = nullptr;
     iResult = getaddrinfo(SERVER_IP, DEFAULT_PORT, &hints, &result);
-    if (iResult != 0) {
+    if (iResult != 0) 
+    {
         printf("getaddrinfo failed with error: %d\n", iResult);
         WSACleanup();
         return 2;
@@ -70,11 +72,13 @@ int main()
 
     addrinfo* ptr = nullptr;
     // пытаться подключиться к адресу, пока не удастся
-    for (ptr = result; ptr != NULL; ptr = ptr->ai_next) {
+    for (ptr = result; ptr != NULL; ptr = ptr->ai_next) 
+    {
         // создать сокет на стороне клиента для подключения к серверу
         client_socket = socket(ptr->ai_family, ptr->ai_socktype, ptr->ai_protocol);
 
-        if (client_socket == INVALID_SOCKET) {
+        if (client_socket == INVALID_SOCKET) 
+        {
             printf("socket failed with error: %ld\n", WSAGetLastError());
             WSACleanup();
             return 3;
@@ -82,7 +86,8 @@ int main()
 
         // connect to server
         iResult = connect(client_socket, ptr->ai_addr, (int)ptr->ai_addrlen);
-        if (iResult == SOCKET_ERROR) {
+        if (iResult == SOCKET_ERROR) 
+        {
             closesocket(client_socket);
             client_socket = INVALID_SOCKET;
             continue;
@@ -90,9 +95,8 @@ int main()
         break;
     }
 
-  //  freeaddrinfo(result);
-
-    if (client_socket == INVALID_SOCKET) {
+    if (client_socket == INVALID_SOCKET) 
+    {
         printf("Unable to connect to server!\n");
         WSACleanup();
         return 5;
@@ -101,8 +105,6 @@ int main()
     thread t1(Sender);
     thread t2(Receiver);
 
-
     t1.join();
     t2.join();
-
 }
